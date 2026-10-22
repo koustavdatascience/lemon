@@ -1,0 +1,25 @@
+{
+  "name": "lemon-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prebuild": "node scripts/sync-public.js",
+    "dev": "node scripts/sync-public.js && vite build --watch",
+    "build": "vite build",
+    "preview": "vite build && echo 'Load dist/ folder in Chrome via Load unpacked'"
+  },
+  "dependencies": {
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.0.268",
+    "@vitejs/plugin-react": "4.2.1",
+    "autoprefixer": "10.4.19",
+    "postcss": "8.4.38",
+    "tailwindcss": "3.4.3",
+    "vite": "5.2.11",
+    "vite-plugin-web-extension": "4.1.2"
+  }
+}

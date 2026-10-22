@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lemon — Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Inline minimal reset — options page doesn't use Tailwind */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: "Inter", system-ui, sans-serif;
+        background: #f9fafb;
+        color: #111827;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        padding: 2rem 1rem;
+      }
+      main {
+        width: 100%;
+        max-width: 520px;
+      }
+      h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; }
+      section { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.25rem; }
+      h2 { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; margin-bottom: 1rem; }
+      label { display: block; font-size: 0.875rem; font-weight: 500; color: #374151; margin-bottom: 0.35rem; }
+      input[type="password"], input[type="text"] {
+        width: 100%; padding: 0.5rem 0.75rem; font-size: 0.875rem;
+        border: 1px solid #d1d5db; border-radius: 8px; outline: none;
+        font-family: inherit;
+      }
+      input:focus { border-color: #eab308; box-shadow: 0 0 0 2px #fef08a; }
+      .help { font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem; }
+      button {
+        margin-top: 1rem; padding: 0.5rem 1.25rem;
+        background: #facc15; color: #111827;
+        font-size: 0.875rem; font-weight: 500;
+        border: none; border-radius: 8px; cursor: pointer;
+        font-family: inherit;
+      }
+      button:hover { background: #eab308; }
+      #status { margin-left: 0.75rem; font-size: 0.875rem; }
+      .status-saved  { color: #16a34a; }
+      .status-error  { color: #dc2626; }
+      .status-saving { color: #6b7280; }
+      .about { font-size: 0.75rem; color: #6b7280; line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1><span aria-hidden="true">🍋</span> Lemon Settings</h1>
+
+      <section>
+        <h2>AI API Keys</h2>
+
+        <div>
+          <label for="gemini-key">Gemini API Key</label>
+          <input type="password" id="gemini-key" placeholder="AIza…" autocomplete="off" spellcheck="false" />
+          <p class="help">Get a free key at <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a>. Stored only on this device.</p>
+        </div>
+
+        <!-- Groq key — Slice 9 will enable this -->
+        <!--
+        <div style="margin-top:1rem">
+          <label for="groq-key">Groq API Key (fallback)</label>
+          <input type="password" id="groq-key" placeholder="gsk_…" autocomplete="off" spellcheck="false" />
+          <p class="help">Optional. Used when Gemini rate limits are reached.</p>
+        </div>
+        -->
+
+        <div style="display:flex;align-items:center">
+          <button id="save-btn">Save Settings</button>
+          <span id="status" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section>
+        <h2>About</h2>
+        <p class="about">
+          🍋 Lemon v0.1.0<br />
+          All data is stored locally on your device.<br />
+          API keys are never committed to source control or sent anywhere except the respective AI provider.
+        </p>
+      </section>
+    </main>
+    <script src="./options.js" type="module"></script>
+  </body>
+</html>

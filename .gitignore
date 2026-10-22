@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output — load dist/ in Chrome via Load unpacked
+dist/
+
+# Environment — never commit real keys
+.env
+.env.local
+.env.*.local
+
+# Editor
+.DS_Store
+Thumbs.db
+*.log
