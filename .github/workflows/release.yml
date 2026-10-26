@@ -1,0 +1,64 @@
+# GitHub Actions workflow — builds the extension and uploads dist/ as a release ZIP.
+# Triggered manually (workflow_dispatch) or on pushing a version tag (v*).
+
+name: Build & Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pin Node version for reproducible builds (edge case 17.3)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Verify dist/ contents
+        run: |
+          echo "dist/ contents:"
+          ls -la dist/
+          # Sanity check: manifest.json must exist
+          if [ ! -f dist/manifest.json ]; then
+            echo "::error::manifest.json missing from dist/"
+            exit 1
+          fi
+
+      - name: Package as ZIP
+        run: |
+          cd dist
+          zip -r ../lemon-${{ github.ref_name }}.zip .
+          cd ..
+          echo "ZIP created: lemon-${{ github.ref_name }}.zip"
+          ls -lh lemon-${{ github.ref_name }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lemon-extension
+          path: lemon-*.zip
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: lemon-*.zip
+          generate_release_notes: true
