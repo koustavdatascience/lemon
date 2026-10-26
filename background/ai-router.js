@@ -7,9 +7,9 @@
  *  - Streaming fetch with token-by-token delivery via a callback
  *  - Error detection (429, 5xx, safety blocks, empty candidates)
  *  - Retry with exponential backoff (max 2 retries)
- *  - Fallback chain: gemini-flash-lite → gemini-flash → groq  (Slice 9 adds Groq)
+ *  - Fallback chain: gemini-flash-lite → gemini-flash → groq
  *
- * Slice 9 will wire in Groq. For now the fallback chain stops at gemini-flash.
+ * Slice 9: Groq fallback fully wired in.
  */
 
 import { getGeminiApiKey, getGroqApiKey } from "./storage-helpers.js";
@@ -17,12 +17,14 @@ import { getGeminiApiKey, getGroqApiKey } from "./storage-helpers.js";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const GROQ_BASE   = "https://api.groq.com/openai/v1/chat/completions";
 
 const MODELS = {
   FLASH_LITE: "gemini-3.5-flash-lite",   // was gemini-2.0-flash-lite (retired June 2026)
   FLASH:      "gemini-3.5-flash",        // was gemini-2.0-flash (retired June 2026)
-  // GROQ:    "llama-3.3-70b-versatile", // Slice 9
 };
+
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 /**
  * Task → default model mapping.
@@ -69,6 +71,7 @@ export async function streamChat({
   const modelName = MODELS[modelKey];
 
   try {
+    // ── Try Gemini first (flash-lite, with escalation to flash) ────────────
     await _streamWithRetry({
       modelName,
       messages,
@@ -80,6 +83,23 @@ export async function streamChat({
       task,
     });
   } catch (err) {
+    // ── Fallback to Groq if Gemini key missing or rate-limited (Slice 9) ────
+    if (err.message.startsWith("NO_KEY:") || err.message.startsWith("RATE_LIMIT:")) {
+      try {
+        await _fallbackToGroq({ messages, systemPrompt, onToken, onDone, signal });
+        return;
+      } catch (groqErr) {
+        // Edge case 9.1: both keys missing → single clear message
+        if (err.message.startsWith("NO_KEY:") && groqErr.message.startsWith("NO_KEY:")) {
+          onError(new Error("NO_KEY: Add at least one API key in Settings to use Lemon."));
+        } else {
+          onError(groqErr);
+        }
+        return;
+      }
+    }
+
+    // Non-recoverable error (AUTH, SAFETY, NETWORK, etc.)
     onError(err);
   }
 }
@@ -251,9 +271,9 @@ async function _handleHttpError({
       });
     }
 
-    // TODO Slice 9: try Groq here
+    // Flash also exhausted — let streamChat try Groq as fallback
     throw new Error(
-      "RATE_LIMIT: All Gemini free-tier limits reached. Add a Groq API key in Settings as a fallback, or try again later."
+      "RATE_LIMIT: All Gemini free-tier limits reached."
     );
   }
 
@@ -284,6 +304,259 @@ async function _handleHttpError({
   }
 
   throw new Error(`API_ERROR: Gemini returned HTTP ${status}. ${_extractApiMessage(body)}`);
+}
+
+// ─── Groq fallback (Slice 9) ──────────────────────────────────────────────────
+
+/**
+ * Checks for a Groq API key and streams via Groq's OpenAI-compatible endpoint.
+ * Called by streamChat when Gemini fails with NO_KEY or RATE_LIMIT.
+ *
+ * Edge case 9.1: if no Groq key either, throws NO_KEY so streamChat can show
+ *   a single combined "Add at least one API key" message.
+ * Edge case 9.2: Groq 429 → throw RATE_LIMIT with "all limits reached" message.
+ */
+async function _fallbackToGroq({ messages, systemPrompt, onToken, onDone, signal }) {
+  const groqKey = await getGroqApiKey();
+
+  if (!groqKey) {
+    throw new Error("NO_KEY: No Groq API key found.");
+  }
+
+  onToken("\n⬇️ Falling back to Groq…\n");
+
+  await _streamGroqWithRetry({
+    messages,
+    systemPrompt,
+    onToken,
+    onDone,
+    signal,
+    retryCount: 0,
+  });
+}
+
+/**
+ * Streams a response from Groq's OpenAI-compatible API with retry logic.
+ * Retries on 429 and 5xx with exponential backoff (max MAX_RETRIES).
+ *
+ * Note on edge case 9.6: retry uses `await sleep(ms)` which relies on
+ * setTimeout. If the SW is killed during a retry wait, the request is lost.
+ * Full retry-state persistence is deferred to Slice 13 (agent persistence).
+ */
+async function _streamGroqWithRetry({
+  messages,
+  systemPrompt,
+  onToken,
+  onDone,
+  signal,
+  retryCount,
+}) {
+  const groqKey = await getGroqApiKey();
+
+  if (!groqKey) {
+    throw new Error("NO_KEY: No Groq API key found.");
+  }
+
+  // Convert Gemini-format messages to OpenAI format
+  const openaiMessages = convertToOpenAIMessages(messages, systemPrompt);
+
+  const body = {
+    model:       GROQ_MODEL,
+    messages:    openaiMessages,
+    stream:      true,
+    max_tokens:  2048,
+    temperature: 0.7,
+  };
+
+  // Timeout
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const combinedSignal = signal
+    ? anyAbort([signal, controller.signal])
+    : controller.signal;
+
+  let response;
+  try {
+    response = await fetch(GROQ_BASE, {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${groqKey}`,
+      },
+      body:    JSON.stringify(body),
+      signal:  combinedSignal,
+    });
+  } catch (fetchErr) {
+    clearTimeout(timeoutId);
+    if (fetchErr.name === "AbortError") {
+      throw new Error("TIMEOUT: The request took too long. Check your connection and try again.");
+    }
+    throw new Error(`NETWORK: ${fetchErr.message}`);
+  }
+
+  clearTimeout(timeoutId);
+
+  // ── Handle non-200 ────────────────────────────────────────────────────────
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "");
+    return _handleGroqHttpError({
+      status:     response.status,
+      body:        errorBody,
+      messages,
+      systemPrompt,
+      onToken,
+      onDone,
+      signal,
+      retryCount,
+    });
+  }
+
+  // ── Stream SSE tokens (OpenAI format) ──────────────────────────────────────
+  let fullText = "";
+
+  try {
+    const reader  = response.body.getReader();
+    const decoder = new TextDecoder();
+    let   buffer  = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+
+        const jsonStr = trimmed.slice(5).trim();
+        if (jsonStr === "[DONE]") break;
+
+        let parsed;
+        try {
+          parsed = JSON.parse(jsonStr);
+        } catch {
+          continue;
+        }
+
+        // Check for safety/content filter
+        const finishReason = parsed?.choices?.[0]?.finish_reason;
+        if (finishReason === "content_filter") {
+          throw new Error(
+            "SAFETY: Response blocked by model safety filter — try rephrasing your question."
+          );
+        }
+
+        const chunk = parsed?.choices?.[0]?.delta?.content ?? "";
+        if (chunk) {
+          fullText += chunk;
+          onToken(chunk);
+        }
+      }
+    }
+  } catch (streamErr) {
+    if (streamErr.message.startsWith("SAFETY:")) throw streamErr;
+    throw new Error(`STREAM: Lost connection while receiving response. ${streamErr.message}`);
+  }
+
+  onDone(fullText);
+}
+
+/**
+ * Handles Groq HTTP errors with retry and clear user messages.
+ * Edge case 9.2: Groq 429 → "all free-tier limits reached".
+ */
+async function _handleGroqHttpError({
+  status,
+  body,
+  messages,
+  systemPrompt,
+  onToken,
+  onDone,
+  signal,
+  retryCount,
+}) {
+  // ── Rate limit — retry then give up (Groq is last in the chain) ──────────
+  if (status === 429) {
+    if (retryCount < MAX_RETRIES) {
+      const waitMs = RETRY_BASE_MS * (retryCount + 1);
+      onToken(`\n⏳ Groq rate limit — retrying in ${waitMs / 1000}s… (${retryCount + 1}/${MAX_RETRIES})\n`);
+      await sleep(waitMs);
+      return _streamGroqWithRetry({
+        messages,
+        systemPrompt,
+        onToken,
+        onDone,
+        signal,
+        retryCount: retryCount + 1,
+      });
+    }
+
+    // Edge case 9.2: Groq is the last fallback — all limits reached
+    throw new Error(
+      "RATE_LIMIT: All free-tier limits reached (Gemini and Groq). Try again later."
+    );
+  }
+
+  // ── Auth errors ──────────────────────────────────────────────────────────
+  if (status === 401) {
+    throw new Error("AUTH: Invalid Groq API key. Check Settings.");
+  }
+  if (status === 403) {
+    throw new Error("AUTH: Groq API key doesn't have access. Check your Groq console.");
+  }
+
+  // ── Server errors — retry ────────────────────────────────────────────────
+  if (status >= 500 && retryCount < MAX_RETRIES) {
+    const waitMs = RETRY_BASE_MS * (retryCount + 1);
+    await sleep(waitMs);
+    return _streamGroqWithRetry({
+      messages,
+      systemPrompt,
+      onToken,
+      onDone,
+      signal,
+      retryCount: retryCount + 1,
+    });
+  }
+
+  throw new Error(`API_ERROR: Groq returned HTTP ${status}. ${_extractApiMessage(body)}`);
+}
+
+/**
+ * Convert Gemini-format messages to OpenAI-format messages for Groq.
+ * Extracts text from parts; skips inline image data (Groq text model can't use it).
+ *
+ * @param {Array<{role, parts}>} messages — Gemini format
+ * @param {string} systemPrompt — optional system prompt
+ * @returns {Array<{role, content}>} — OpenAI format
+ */
+function convertToOpenAIMessages(messages, systemPrompt) {
+  const result = [];
+
+  if (systemPrompt) {
+    result.push({ role: "system", content: systemPrompt });
+  }
+
+  for (const msg of messages) {
+    // Extract text from all parts, skip inlineData
+    const textParts = msg.parts
+      .filter((p) => p.text)
+      .map((p) => p.text);
+    const content = textParts.join("");
+
+    if (!content) continue;
+
+    result.push({
+      role:    msg.role === "model" ? "assistant" : "user",
+      content,
+    });
+  }
+
+  return result;
 }
 
 // ─── Prompt builders ──────────────────────────────────────────────────────────

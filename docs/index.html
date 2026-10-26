@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lemon — Browser AI Agent</title>
+  <meta name="description" content="A user-controlled browser AI agent that reads, understands, and acts on web pages with your approval on every step." />
+  <style>
+    :root {
+      --lemon-400: #facc15;
+      --lemon-500: #eab308;
+      --gray-900: #1f2937;
+      --gray-600: #4b5563;
+      --gray-400: #9ca3af;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+      background: #fffbeb;
+      color: var(--gray-900);
+      line-height: 1.6;
+    }
+    .container { max-width: 768px; margin: 0 auto; padding: 0 24px; }
+    header { padding: 80px 0 40px; text-align: center; }
+    .logo { font-size: 72px; line-height: 1; margin-bottom: 16px; }
+    h1 { font-size: 36px; font-weight: 700; margin-bottom: 12px; }
+    .tagline { font-size: 18px; color: var(--gray-600); max-width: 480px; margin: 0 auto 32px; }
+    .cta { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .btn {
+      display: inline-block;
+      padding: 12px 28px;
+      border-radius: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      font-size: 15px;
+      transition: transform 0.15s, background 0.15s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: var(--lemon-400); color: var(--gray-900); }
+    .btn-primary:hover { background: var(--lemon-500); }
+    .btn-secondary { background: #fff; color: var(--gray-600); border: 1px solid #e5e7eb; }
+    .btn-secondary:hover { background: #f9fafb; }
+    section { padding: 48px 0; border-top: 1px solid #fef3c7; }
+    h2 { font-size: 24px; font-weight: 700; margin-bottom: 24px; }
+    .grid { display: grid; gap: 16px; }
+    @media (min-width: 600px) { .grid { grid-template-columns: 1fr 1fr; } }
+    .feature {
+      padding: 20px;
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid #fef3c7;
+    }
+    .feature h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .feature p { font-size: 14px; color: var(--gray-600); }
+    .steps { counter-reset: step; list-style: none; padding: 0; }
+    .steps li {
+      counter-increment: step;
+      padding: 14px 0 14px 48px;
+      position: relative;
+      border-bottom: 1px solid #fef3c7;
+      font-size: 15px;
+    }
+    .steps li:last-child { border-bottom: none; }
+    .steps li::before {
+      content: counter(step);
+      position: absolute; left: 0; top: 14px;
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: var(--lemon-400);
+      color: var(--gray-900);
+      font-weight: 700; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .steps code {
+      background: #fff; padding: 2px 6px; border-radius: 4px;
+      font-size: 13px; color: var(--gray-900); border: 1px solid #fef3c7;
+    }
+    .privacy { background: #fff; padding: 24px; border-radius: 12px; border: 1px solid #fef3c7; }
+    .privacy p { font-size: 14px; color: var(--gray-600); margin-bottom: 8px; }
+    .privacy p:last-child { margin-bottom: 0; }
+    footer { text-align: center; padding: 40px 0; color: var(--gray-400); font-size: 14px; }
+    a { color: var(--gray-900); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo" aria-hidden="true">🍋</div>
+      <h1>Lemon</h1>
+      <p class="tagline">A user-controlled browser AI agent that reads, understands, and acts on web pages — with your approval on every step.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/your-username/lemon">View on GitHub</a>
+        <a class="btn btn-secondary" href="https://github.com/your-username/lemon#quick-start">Quick Start</a>
+      </div>
+    </header>
+
+    <section>
+      <h2>What Lemon does</h2>
+      <div class="grid">
+        <div class="feature"><h3>📄 Summarise</h3><p>TL;DR + key points for articles and YouTube videos. Clickable chapter timestamps.</p></div>
+        <div class="feature"><h3>💬 Page Chat</h3><p>Ask questions answered only from the current page. No hallucination.</p></div>
+        <div class="feature"><h3>🔍 Find It</h3><p>Describe an element in plain English. Lemon highlights it on the page.</p></div>
+        <div class="feature"><h3>🤖 Agent Loop</h3><p>Multi-step tasks with Approve / Skip / Stop on every action.</p></div>
+        <div class="feature"><h3>👤 Profile Memory</h3><p>Save your details. The agent auto-suggests them on forms.</p></div>
+        <div class="feature"><h3>⚡ Skills</h3><p>Save reusable prompt recipes. Run with one click. Export as JSON.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Install in 4 steps</h2>
+      <ol class="steps">
+        <li>Clone the repo and run <code>npm install && npm run build</code></li>
+        <li>Open <code>chrome://extensions/</code> and enable Developer mode</li>
+        <li>Click <strong>Load unpacked</strong> and select the <code>dist/</code> folder</li>
+        <li>Open the side panel, go to Settings, and add your free Gemini API key</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Privacy first</h2>
+      <div class="privacy">
+        <p>✅ All data stays on your device in <code>chrome.storage.local</code></p>
+        <p>✅ API keys are never logged, synced, or exported</p>
+        <p>✅ Lemon refuses to act on banking, payment, or crypto pages</p>
+        <p>✅ Password, OTP, and card fields are never filled by the agent</p>
+        <p>✅ Webmail, medical, and government portal pages are never sent to AI</p>
+        <p>✅ No DOM action runs without your explicit approval</p>
+      </div>
+    </section>
+
+    <footer>
+      <p>Lemon v0.1.0 — MIT License</p>
+      <p style="margin-top:4px;">Built with React, Vite, and Gemini</p>
+    </footer>
+  </div>
+</body>
+</html>

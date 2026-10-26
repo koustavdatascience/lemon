@@ -92,6 +92,82 @@ export async function setProfile(profile) {
   return storageSet(PROFILE_KEY, profile);
 }
 
+/**
+ * Build a compact plain-text snippet summarising the user profile for injection
+ * into AI prompts. Only includes non-empty fields to keep tokens low.
+ *
+ * Edge case 14.1: values are escaped so special chars don't break prompt structure.
+ * Edge case 14.4: only fields relevant to the current context should be sent;
+ *   callers can pass `fieldsOfInterest` (array of label keywords) to filter.
+ *   Pass null/undefined to include everything.
+ *
+ * @param {object} [fieldsOfInterest]  array of lowercase label keywords, e.g. ["name","email"]
+ * @returns {Promise<string>}
+ */
+export async function buildProfilePromptSnippet(fieldsOfInterest = null) {
+  const profile = await getProfile();
+  if (!profile || Object.keys(profile).length === 0) return "";
+
+  const lines = [];
+
+  /** Helper: escape a value so it can't break the surrounding prompt */
+  const esc = (v) => String(v ?? "").replace(/[<>"]/g, "").trim();
+
+  /** Helper: check if a field label matches a keyword of interest */
+  const relevant = (label) => {
+    if (!fieldsOfInterest) return true;
+    const lower = label.toLowerCase();
+    return fieldsOfInterest.some((kw) => lower.includes(kw));
+  };
+
+  // Standard fields
+  const STANDARD = [
+    { key: "name",       label: "Full name"     },
+    { key: "firstName",  label: "First name"    },
+    { key: "lastName",   label: "Last name"     },
+    { key: "email",      label: "Email"         },
+    { key: "phone",      label: "Phone"         },
+    { key: "college",    label: "College/School"},
+    { key: "degree",     label: "Degree"        },
+    { key: "graduation", label: "Graduation year"},
+    { key: "linkedin",   label: "LinkedIn"      },
+    { key: "github",     label: "GitHub"        },
+    { key: "website",    label: "Website"       },
+    { key: "city",       label: "City"          },
+    { key: "country",    label: "Country"       },
+    { key: "tone",       label: "Preferred tone"},
+  ];
+
+  for (const { key, label } of STANDARD) {
+    const val = profile[key];
+    if (val && relevant(label)) lines.push(`${label}: ${esc(val)}`);
+  }
+
+  // skills[] array
+  if (Array.isArray(profile.skills) && profile.skills.length > 0 && relevant("skills")) {
+    lines.push(`Skills: ${profile.skills.map(esc).join(", ")}`);
+  }
+
+  // links[] array
+  if (Array.isArray(profile.links) && profile.links.length > 0 && relevant("links")) {
+    for (const lnk of profile.links) {
+      if (lnk?.label && lnk?.url) lines.push(`${esc(lnk.label)}: ${esc(lnk.url)}`);
+    }
+  }
+
+  // custom fields
+  if (Array.isArray(profile.customFields)) {
+    for (const cf of profile.customFields) {
+      if (cf?.label && cf?.value && relevant(cf.label)) {
+        lines.push(`${esc(cf.label)}: ${esc(cf.value)}`);
+      }
+    }
+  }
+
+  if (lines.length === 0) return "";
+  return `User profile:\n${lines.join("\n")}`;
+}
+
 // ─── Skills (Slice 15) ────────────────────────────────────────────────────────
 
 export async function getSkills() {
@@ -100,6 +176,34 @@ export async function getSkills() {
 
 export async function setSkills(skills) {
   return storageSet(SKILLS_KEY, skills);
+}
+
+/**
+ * Add or update a skill. If a skill with the same id exists it is replaced;
+ * otherwise the new skill is appended.
+ * @param {{ id:string, name:string, prompt:string, createdAt:number }} skill
+ */
+export async function upsertSkill(skill) {
+  const skills = await getSkills();
+  const idx    = skills.findIndex((s) => s.id === skill.id);
+  if (idx >= 0) {
+    skills[idx] = skill;
+  } else {
+    skills.push(skill);
+  }
+  return setSkills(skills);
+}
+
+/**
+ * Delete a skill by id. Returns the deleted skill so the caller can offer Undo.
+ * @param {string} id
+ * @returns {Promise<object|null>}
+ */
+export async function deleteSkill(id) {
+  const skills  = await getSkills();
+  const deleted = skills.find((s) => s.id === id) ?? null;
+  await setSkills(skills.filter((s) => s.id !== id));
+  return deleted;
 }
 
 // ─── Agent State (Slice 12) ───────────────────────────────────────────────────
